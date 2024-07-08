@@ -36,8 +36,15 @@ module Exercises = struct
   ;;
 
   let print_game (game : Game.t) =
-    ignore game;
-    print_endline ""
+    (* ignore game;
+    print_endline "" *)
+     match game with
+    | {game_kind ; board } -> 
+    ignore game_kind;
+      (* match game_kind with 
+      | Game.Game_kind.Tic_tac_toe -> ()
+      |Game.Game_kind.Omok -> () *) 
+      print_s[%message (board : Game.Piece.t Game.Position.Map.t)]
   ;;
 
   let%expect_test "print_win_for_x" =
@@ -160,20 +167,58 @@ module Exercises = struct
   ;;
 end
 
+let handle_turn (_client : unit) (_query : Rpcs.Take_turn.Query.t) =
+  (* let%bind () = delay 10 in *)
+  (* print_s [%message "Received query" (query : Echo.Query.t)]; *)
+  let piece = Game.Piece.X in
+  let position = Game.Position.{row = 0; column = 0} in
+  let (response : Rpcs.Take_turn.Response.t) = {piece ; position} in
+  return response
+;;
+
+
+let implementations =
+  Rpc.Implementations.create_exn
+    ~on_unknown_rpc:`Close_connection
+    ~implementations:[ Rpc.Rpc.implement Rpcs.Take_turn.rpc handle_turn]
+;;
+
+
+
 let command_play =
   Command.async
     ~summary:"Play"
     (let%map_open.Command () = return ()
-     and controller =
+     (*and controller =
        flag "-controller" (required host_and_port) ~doc:"_ host_and_port of controller"
-     and port = flag "-port" (required int) ~doc:"_ port to listen on" in
+     *)and port = flag "-port" (required int) ~doc:"_ port to listen on" in
      fun () ->
        (* We should start listing on the supplied [port], ready to handle incoming
           queries for [Take_turn] and [Game_over]. We should also connect to the
           controller and send a [Start_game] to initiate the game. *)
-       ignore controller;
+
+          let%bind server =
+          Rpc.Connection.serve
+            ~implementations
+            ~initial_connection_state:(fun _client_identity _client_addr ->
+              (* This constructs the "client" values which are passed to the
+                 implementation function above. We're just using unit for now. *)
+              ())
+            ~where_to_listen:(Tcp.Where_to_listen.of_port port)
+            ()
+        in
+        Tcp.Server.close_finished server
+        
+        )
+
+
+
+
+
+(* 
+       (* ignore controller; *)
        ignore port;
-       return ())
+       return ()) *)
 ;;
 
 let command =
