@@ -36,15 +36,33 @@ module Exercises = struct
   ;;
 
   let print_game (game : Game.t) =
-    (* ignore game;
-    print_endline "" *)
-     match game with
-    | {game_kind ; board } -> 
-    ignore game_kind;
-      (* match game_kind with 
-      | Game.Game_kind.Tic_tac_toe -> ()
-      |Game.Game_kind.Omok -> () *) 
-      print_s[%message (board : Game.Piece.t Game.Position.Map.t)]
+    
+    let pos_map = game.board in
+    let len = Game.Game_kind.board_length game.game_kind in
+    let board_list = List.init len ~f:(fun row ->
+      List.init len ~f:(fun col -> 
+          match (Map.find pos_map {row = row ; column = col}) with
+          | Some piece ->
+            (match piece with
+            | Game.Piece.O -> "O"
+            | Game.Piece.X -> "X"
+            )
+          | None -> " "
+        )
+      ) in
+
+      List.iteri board_list ~f:(fun row col_list ->
+        List.iteri col_list ~f:(fun col piece -> 
+          print_string piece;
+          if not (col = (len - 1)) then
+            print_string " | "
+          else
+            print_newline ()
+        );
+        let line_str = String.init (3 * len) ~f:(fun _num -> '-') in
+        if not (row = (len - 1)) then
+          print_endline(line_str);
+      );
   ;;
 
   let%expect_test "print_win_for_x" =
