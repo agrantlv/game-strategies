@@ -181,13 +181,6 @@ module Exercises = struct
       not (Map.mem pos_map possible_move))
   ;;
 
-  let taken_moves (game : Game.t) : Game.Position.t list =
-    let pos_map = game.board in
-    let all_moves = all_moves game in
-    List.filter all_moves ~f:(fun possible_move ->
-      Map.mem pos_map possible_move)
-  ;;
-
   let rec create_winning_list
     ~(position : Game.Position.t)
     ~len
@@ -221,10 +214,9 @@ module Exercises = struct
     with
     | Some _move -> Game.Evaluation.Illegal_move
     | None ->
-      let taken_moves = taken_moves game in
       let win_len = Game.Game_kind.win_length game.game_kind in
       (match
-         List.find taken_moves ~f:(fun position ->
+         List.find previous_moves ~f:(fun position ->
            let check_lists =
              [ create_winning_list
                  ~position
@@ -247,13 +239,9 @@ module Exercises = struct
              in
              (* put not in front for List.exists, since it will return true
                 if incorrect piece found *)
-             not
-               (List.exists potential_list ~f:(fun check_pos ->
-                  (not (Map.mem pos_map check_pos))
-                  || not
-                       (Game.Piece.equal
-                          one_piece
-                          (Map.find_exn pos_map check_pos))))))
+             List.for_all potential_list ~f:(fun check_pos ->
+               Map.mem pos_map check_pos
+               && Game.Piece.equal one_piece (Map.find_exn pos_map check_pos))))
        with
        | Some (position : Game.Position.t) ->
          let winning_piece = Map.find_exn pos_map position in

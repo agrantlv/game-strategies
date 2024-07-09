@@ -6,11 +6,14 @@ module Exercises = struct
   (* Here are some functions which know how to create a couple different
      kinds of games *)
 
-  type direction =
-    | Horizontal
-    | Vertical
-    | DiagonalUp
-    | DiagonalDown
+  module Direction = struct
+    type t =
+      | Horizontal
+      | Vertical
+      | DiagonalUp
+      | DiagonalDown
+    [@@deriving enumerate]
+  end
 
   let empty_game = Game.empty Game.Game_kind.Tic_tac_toe
 
@@ -181,17 +184,10 @@ module Exercises = struct
       not (Map.mem pos_map possible_move))
   ;;
 
-  let taken_moves (game : Game.t) : Game.Position.t list =
-    let pos_map = game.board in
-    let all_moves = all_moves game in
-    List.filter all_moves ~f:(fun possible_move ->
-      Map.mem pos_map possible_move)
-  ;;
-
   let rec create_winning_list
     ~(position : Game.Position.t)
     ~len
-    ~(direction : direction)
+    ~(direction : Direction.t)
     : Game.Position.t list
     =
     if len = 1
@@ -221,39 +217,24 @@ module Exercises = struct
     with
     | Some _move -> Game.Evaluation.Illegal_move
     | None ->
-      let taken_moves = taken_moves game in
       let win_len = Game.Game_kind.win_length game.game_kind in
       (match
-         List.find taken_moves ~f:(fun position ->
+         List.find previous_moves ~f:(fun position ->
+           (* partial application of function*)
+           let create_winning_list =
+             create_winning_list ~position ~len:win_len
+           in
            let check_lists =
-             [ create_winning_list
-                 ~position
-                 ~len:win_len
-                 ~direction:Horizontal
-             ; create_winning_list ~position ~len:win_len ~direction:Vertical
-             ; create_winning_list
-                 ~position
-                 ~len:win_len
-                 ~direction:DiagonalDown
-             ; create_winning_list
-                 ~position
-                 ~len:win_len
-                 ~direction:DiagonalUp
-             ]
+             List.map Direction.all ~f:(fun direction ->
+               create_winning_list ~direction)
            in
            List.exists check_lists ~f:(fun potential_list ->
              let (one_piece : Game.Piece.t) =
                Map.find_exn pos_map (List.hd_exn potential_list)
              in
-             (* put not in front for List.exists, since it will return true
-                if incorrect piece found *)
-             not
-               (List.exists potential_list ~f:(fun check_pos ->
-                  (not (Map.mem pos_map check_pos))
-                  || not
-                       (Game.Piece.equal
-                          one_piece
-                          (Map.find_exn pos_map check_pos))))))
+             List.for_all potential_list ~f:(fun check_pos ->
+               Map.mem pos_map check_pos
+               && Game.Piece.equal one_piece (Map.find_exn pos_map check_pos))))
        with
        | Some (position : Game.Position.t) ->
          let winning_piece = Map.find_exn pos_map position in
