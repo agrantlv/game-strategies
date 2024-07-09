@@ -3,8 +3,8 @@ open! Async
 open! Game_strategies_common_lib
 
 module Exercises = struct
-  (* Here are some functions which know how to create a couple different kinds
-     of games *)
+  (* Here are some functions which know how to create a couple different
+     kinds of games *)
   let empty_game = Game.empty Game.Game_kind.Tic_tac_toe
 
   let place_piece (game : Game.t) ~piece ~position : Game.t =
@@ -36,33 +36,22 @@ module Exercises = struct
   ;;
 
   let print_game (game : Game.t) =
-    
     let pos_map = game.board in
     let len = Game.Game_kind.board_length game.game_kind in
-    let board_list = List.init len ~f:(fun row ->
-      List.init len ~f:(fun col -> 
-          match (Map.find pos_map {row = row ; column = col}) with
+    let board_list =
+      List.init len ~f:(fun row ->
+        List.init len ~f:(fun col ->
+          match Map.find pos_map { row; column = col } with
           | Some piece ->
-            (match piece with
-            | Game.Piece.O -> "O"
-            | Game.Piece.X -> "X"
-            )
-          | None -> " "
-        )
-      ) in
-
-      List.iteri board_list ~f:(fun row col_list ->
-        List.iteri col_list ~f:(fun col piece -> 
-          print_string piece;
-          if not (col = (len - 1)) then
-            print_string " | "
-          else
-            print_newline ()
-        );
-        let line_str = String.init (3 * len) ~f:(fun _num -> '-') in
-        if not (row = (len - 1)) then
-          print_endline(line_str);
-      );
+            (match piece with Game.Piece.O -> "O" | Game.Piece.X -> "X")
+          | None -> " "))
+    in
+    List.iteri board_list ~f:(fun row col_list ->
+      List.iteri col_list ~f:(fun col piece ->
+        print_string piece;
+        if not (col = len - 1) then print_string " | " else print_newline ());
+      let line_str = String.init (3 * len) ~f:(fun _num -> '-') in
+      if not (row = len - 1) then print_endline line_str)
   ;;
 
   let%expect_test "print_win_for_x" =
@@ -104,14 +93,18 @@ module Exercises = struct
   ;;
 
   (* Exercise 3 *)
-  let winning_moves ~(me : Game.Piece.t) (game : Game.t) : Game.Position.t list =
+  let winning_moves ~(me : Game.Piece.t) (game : Game.t)
+    : Game.Position.t list
+    =
     ignore me;
     ignore game;
     failwith "Implement me!"
   ;;
 
   (* Exercise 4 *)
-  let losing_moves ~(me : Game.Piece.t) (game : Game.t) : Game.Position.t list =
+  let losing_moves ~(me : Game.Piece.t) (game : Game.t)
+    : Game.Position.t list
+    =
     ignore me;
     ignore game;
     failwith "Implement me!"
@@ -148,8 +141,9 @@ module Exercises = struct
       (required (Arg_type.create Game.Piece.of_string))
       ~doc:
         ("PIECE "
-         ^ (Game.Piece.all |> List.map ~f:Game.Piece.to_string |> String.concat ~sep:", ")
-        )
+         ^ (Game.Piece.all
+            |> List.map ~f:Game.Piece.to_string
+            |> String.concat ~sep:", "))
   ;;
 
   let exercise_three =
@@ -177,10 +171,10 @@ module Exercises = struct
   let command =
     Command.group
       ~summary:"Exercises"
-      [ "one"  , exercise_one
-      ; "two"  , exercise_two
+      [ "one", exercise_one
+      ; "two", exercise_two
       ; "three", exercise_three
-      ; "four" , exercise_four
+      ; "four", exercise_four
       ]
   ;;
 end
@@ -189,55 +183,44 @@ let handle_turn (_client : unit) (_query : Rpcs.Take_turn.Query.t) =
   (* let%bind () = delay 10 in *)
   (* print_s [%message "Received query" (query : Echo.Query.t)]; *)
   let piece = Game.Piece.X in
-  let position = Game.Position.{row = 0; column = 0} in
-  let (response : Rpcs.Take_turn.Response.t) = {piece ; position} in
+  let position = Game.Position.{ row = 0; column = 0 } in
+  let (response : Rpcs.Take_turn.Response.t) = { piece; position } in
   return response
 ;;
-
 
 let implementations =
   Rpc.Implementations.create_exn
     ~on_unknown_rpc:`Close_connection
-    ~implementations:[ Rpc.Rpc.implement Rpcs.Take_turn.rpc handle_turn]
+    ~implementations:[ Rpc.Rpc.implement Rpcs.Take_turn.rpc handle_turn ]
 ;;
-
-
 
 let command_play =
   Command.async
     ~summary:"Play"
     (let%map_open.Command () = return ()
-     (*and controller =
-       flag "-controller" (required host_and_port) ~doc:"_ host_and_port of controller"
-     *)and port = flag "-port" (required int) ~doc:"_ port to listen on" in
+     (*and controller = flag "-controller" (required host_and_port) ~doc:"_
+       host_and_port of controller" *)
+     and port = flag "-port" (required int) ~doc:"_ port to listen on" in
      fun () ->
-       (* We should start listing on the supplied [port], ready to handle incoming
-          queries for [Take_turn] and [Game_over]. We should also connect to the
-          controller and send a [Start_game] to initiate the game. *)
-
-          let%bind server =
-          Rpc.Connection.serve
-            ~implementations
-            ~initial_connection_state:(fun _client_identity _client_addr ->
-              (* This constructs the "client" values which are passed to the
-                 implementation function above. We're just using unit for now. *)
-              ())
-            ~where_to_listen:(Tcp.Where_to_listen.of_port port)
-            ()
-        in
-        Tcp.Server.close_finished server
-        
-        )
-
-
-
-
-
-(* 
-       (* ignore controller; *)
-       ignore port;
-       return ()) *)
+       (* We should start listing on the supplied [port], ready to handle
+          incoming queries for [Take_turn] and [Game_over]. We should also
+          connect to the controller and send a [Start_game] to initiate the
+          game. *)
+       let%bind server =
+         Rpc.Connection.serve
+           ~implementations
+           ~initial_connection_state:(fun _client_identity _client_addr ->
+             (* This constructs the "client" values which are passed to the
+                implementation function above. We're just using unit for
+                now. *)
+             ())
+           ~where_to_listen:(Tcp.Where_to_listen.of_port port)
+           ()
+       in
+       Tcp.Server.close_finished server)
 ;;
+
+(* (* ignore controller; *) ignore port; return ()) *)
 
 let command =
   Command.group
