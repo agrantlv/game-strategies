@@ -136,7 +136,7 @@ module Exercises = struct
     |> place_piece ~piece:Piece.X ~position:{ Position.row = 2; column = 2 }
   ;;
 
-  (* non win
+  (* test losing move
      X |   | O
      ---------
      | X |
@@ -309,12 +309,76 @@ module Exercises = struct
              Game.Position.equal move opp_move)))
   ;;
 
-  (* let available_moves_that_do_not_immediately_lose
-     ~(me : Game.Piece.t)
-     (game : Game.t)
-     =
+  let available_moves_that_do_not_immediately_lose
+    ~(me : Game.Piece.t)
+    (game : Game.t)
+    =
+    let available_moves_list = available_moves game in
+    let losing_moves_list = losing_moves ~me game in
+    List.filter available_moves_list ~f:(fun move ->
+      not
+        (List.exists losing_moves_list ~f:(fun losing_move ->
+           Game.Position.equal losing_move move)))
+  ;;
 
-     ;; *)
+  let score_game ~(me : Game.Piece.t) (game : Game.t) : int =
+    match evaluate game with
+    | Game_over { winner } ->
+      (match winner with
+       | Some piece ->
+         if Game.Piece.equal piece me then Int.max_value else Int.min_value
+       | None -> 0)
+    | Game_continues -> 0
+    | Illegal_move -> 0
+  ;;
+
+  let rec minimax
+    ~(game : Game.t)
+    ~depth
+    ~(me : Game.Piece.t)
+    (maximizing_player : bool)
+    : int
+    =
+    let game_over =
+      match evaluate game with
+      | Game_over { winner } ->
+        ignore winner;
+        true
+      | _ -> false
+    in
+    if depth = 0 || game_over
+    then score_game ~me game
+    else (
+      let possible_moves =
+        available_moves_that_do_not_immediately_lose ~me game
+      in
+      if maximizing_player
+      then (
+        let score_list =
+          List.map possible_moves ~f:(fun move ->
+            minimax
+              ~game:(place_piece game ~piece:me ~position:move)
+              ~me
+              ~depth:(depth - 1)
+              false)
+        in
+        match List.max_elt score_list ~compare:Int.compare with
+        | Some max_elem -> max_elem
+        | None -> Int.min_value)
+      else (
+        (* minimizing player *)
+        let score_list =
+          List.map possible_moves ~f:(fun move ->
+            minimax
+              ~game:(place_piece game ~piece:me ~position:move)
+              ~me
+              ~depth:(depth - 1)
+              true)
+        in
+        match List.min_elt score_list ~compare:Int.compare with
+        | Some max_elem -> max_elem
+        | None -> Int.max_value))
+  ;;
 
   let exercise_one =
     Command.async
@@ -408,12 +472,40 @@ module Exercises = struct
   ;;
 end
 
-let handle_turn (_client : unit) (_query : Rpcs.Take_turn.Query.t) =
+let handle_turn (_client : unit) (query : Rpcs.Take_turn.Query.t) =
   (* let%bind () = delay 10 in *)
   (* print_s [%message "Received query" (query : Echo.Query.t)]; *)
-  let piece = Game.Piece.X in
-  let position = Game.Position.{ row = 0; column = 0 } in
-  let (response : Rpcs.Take_turn.Response.t) = { piece; position } in
+  let piece = query.you_play in
+  let game = query.game in
+  let possible_moves =
+    Exercises.available_moves_that_do_not_immediately_lose ~me:piece game
+  in
+  print_s [%message (possible_moves : Game.Position.t list)];
+  let move_priority_list =
+    List.map possible_moves ~f:(fun move ->
+      let prio =
+        Exercises.minimax
+          ~game:(Exercises.place_piece game ~piece ~position:move)
+          ~me:piece
+          ~depth:9
+          true
+      in
+      move, prio)
+  in
+  let position =
+    List.max_elt move_priority_list ~compare:(fun tuple1 tuple2 ->
+      let min1 = match tuple1 with _, prio -> prio in
+      let min2 = match tuple2 with _, prio2 -> prio2 in
+      min1 - min2)
+  in
+  let position_answer =
+    match position with
+    | Some tuple -> (match tuple with move, _ -> move)
+    | None -> Game.Position.{ row = 0; column = 0 }
+  in
+  let (response : Rpcs.Take_turn.Response.t) =
+    { piece; position = position_answer }
+  in
   return response
 ;;
 
