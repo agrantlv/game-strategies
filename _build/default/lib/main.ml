@@ -6,11 +6,14 @@ module Exercises = struct
   (* Here are some functions which know how to create a couple different
      kinds of games *)
 
-  type direction =
-    | Horizontal
-    | Vertical
-    | DiagonalUp
-    | DiagonalDown
+  module Direction = struct
+    type t =
+      | Horizontal
+      | Vertical
+      | DiagonalUp
+      | DiagonalDown
+    [@@deriving enumerate]
+  end
 
   let empty_game = Game.empty Game.Game_kind.Tic_tac_toe
 
@@ -115,6 +118,39 @@ module Exercises = struct
     |> place_piece ~piece:Piece.O ~position:{ Position.row = 2; column = 0 }
   ;;
 
+  (* non win 2
+     X | O | O
+     ---------
+     O | O |
+     ---------
+     |   | X
+  *)
+  let non_win_2 =
+    let open Game in
+    empty_game
+    |> place_piece ~piece:Piece.X ~position:{ Position.row = 0; column = 0 }
+    |> place_piece ~piece:Piece.O ~position:{ Position.row = 0; column = 1 }
+    |> place_piece ~piece:Piece.O ~position:{ Position.row = 0; column = 2 }
+    |> place_piece ~piece:Piece.O ~position:{ Position.row = 1; column = 0 }
+    |> place_piece ~piece:Piece.O ~position:{ Position.row = 1; column = 1 }
+    |> place_piece ~piece:Piece.X ~position:{ Position.row = 2; column = 2 }
+  ;;
+
+  (* non win
+     X |   | O
+     ---------
+     | X |
+     ---------
+     |   |
+  *)
+  let test_losing_move =
+    let open Game in
+    empty_game
+    |> place_piece ~piece:Piece.X ~position:{ Position.row = 0; column = 0 }
+    |> place_piece ~piece:Piece.O ~position:{ Position.row = 0; column = 2 }
+    |> place_piece ~piece:Piece.X ~position:{ Position.row = 1; column = 1 }
+  ;;
+
   let illegal_game =
     let open Game in
     empty_game
@@ -184,7 +220,7 @@ module Exercises = struct
   let rec create_winning_list
     ~(position : Game.Position.t)
     ~len
-    ~(direction : direction)
+    ~(direction : Direction.t)
     : Game.Position.t list
     =
     if len = 1
@@ -217,28 +253,18 @@ module Exercises = struct
       let win_len = Game.Game_kind.win_length game.game_kind in
       (match
          List.find previous_moves ~f:(fun position ->
+           (* partial application of function*)
+           let create_winning_list =
+             create_winning_list ~position ~len:win_len
+           in
            let check_lists =
-             [ create_winning_list
-                 ~position
-                 ~len:win_len
-                 ~direction:Horizontal
-             ; create_winning_list ~position ~len:win_len ~direction:Vertical
-             ; create_winning_list
-                 ~position
-                 ~len:win_len
-                 ~direction:DiagonalDown
-             ; create_winning_list
-                 ~position
-                 ~len:win_len
-                 ~direction:DiagonalUp
-             ]
+             List.map Direction.all ~f:(fun direction ->
+               create_winning_list ~direction)
            in
            List.exists check_lists ~f:(fun potential_list ->
              let (one_piece : Game.Piece.t) =
                Map.find_exn pos_map (List.hd_exn potential_list)
              in
-             (* put not in front for List.exists, since it will return true
-                if incorrect piece found *)
              List.for_all potential_list ~f:(fun check_pos ->
                Map.mem pos_map check_pos
                && Game.Piece.equal one_piece (Map.find_exn pos_map check_pos))))
@@ -257,19 +283,38 @@ module Exercises = struct
   let winning_moves ~(me : Game.Piece.t) (game : Game.t)
     : Game.Position.t list
     =
-    ignore me;
-    ignore game;
-    failwith "Implement me!"
+    let available_move_list = available_moves game in
+    List.filter available_move_list ~f:(fun position ->
+      let new_board = place_piece game ~piece:me ~position in
+      match evaluate new_board with
+      | Game.Evaluation.Game_over { winner } ->
+        (match winner with
+         | Some piece -> Game.Piece.equal piece me
+         | None -> false)
+      | _ -> false)
   ;;
 
   (* Exercise 4 *)
   let losing_moves ~(me : Game.Piece.t) (game : Game.t)
     : Game.Position.t list
     =
-    ignore me;
-    ignore game;
-    failwith "Implement me!"
+    let available_moves = available_moves game in
+    let opp_win_moves = winning_moves ~me:(Game.Piece.flip me) game in
+    if List.length opp_win_moves > 1
+    then available_moves
+    else
+      List.filter available_moves ~f:(fun move ->
+        not
+          (List.exists opp_win_moves ~f:(fun opp_move ->
+             Game.Position.equal move opp_move)))
   ;;
+
+  (* let available_moves_that_do_not_immediately_lose
+     ~(me : Game.Piece.t)
+     (game : Game.t)
+     =
+
+     ;; *)
 
   let exercise_one =
     Command.async
@@ -334,8 +379,10 @@ module Exercises = struct
       (let%map_open.Command () = return ()
        and piece = piece_flag in
        fun () ->
-         let winning_moves = winning_moves ~me:piece non_win in
-         print_s [%sexp (winning_moves : Game.Position.t list)];
+         let winning_moves_1 = winning_moves ~me:piece non_win in
+         print_s [%sexp (winning_moves_1 : Game.Position.t list)];
+         let winning_moves_2 = winning_moves ~me:piece non_win_2 in
+         print_s [%sexp (winning_moves_2 : Game.Position.t list)];
          return ())
   ;;
 
@@ -345,8 +392,8 @@ module Exercises = struct
       (let%map_open.Command () = return ()
        and piece = piece_flag in
        fun () ->
-         let losing_moves = losing_moves ~me:piece non_win in
-         print_s [%sexp (losing_moves : Game.Position.t list)];
+         let losing_moves_1 = losing_moves ~me:piece test_losing_move in
+         print_s [%sexp (losing_moves_1 : Game.Position.t list)];
          return ())
   ;;
 

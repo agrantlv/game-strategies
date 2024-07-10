@@ -118,6 +118,39 @@ module Exercises = struct
     |> place_piece ~piece:Piece.O ~position:{ Position.row = 2; column = 0 }
   ;;
 
+  (* non win 2
+     X | O | O
+     ---------
+     O | O |
+     ---------
+     |   | X
+  *)
+  let non_win_2 =
+    let open Game in
+    empty_game
+    |> place_piece ~piece:Piece.X ~position:{ Position.row = 0; column = 0 }
+    |> place_piece ~piece:Piece.O ~position:{ Position.row = 0; column = 1 }
+    |> place_piece ~piece:Piece.O ~position:{ Position.row = 0; column = 2 }
+    |> place_piece ~piece:Piece.O ~position:{ Position.row = 1; column = 0 }
+    |> place_piece ~piece:Piece.O ~position:{ Position.row = 1; column = 1 }
+    |> place_piece ~piece:Piece.X ~position:{ Position.row = 2; column = 2 }
+  ;;
+
+  (* test losing move
+     X |   | O
+     ---------
+     | X |
+     ---------
+     |   |
+  *)
+  let test_losing_move =
+    let open Game in
+    empty_game
+    |> place_piece ~piece:Piece.X ~position:{ Position.row = 0; column = 0 }
+    |> place_piece ~piece:Piece.O ~position:{ Position.row = 0; column = 2 }
+    |> place_piece ~piece:Piece.X ~position:{ Position.row = 1; column = 1 }
+  ;;
+
   let illegal_game =
     let open Game in
     empty_game
@@ -250,19 +283,47 @@ module Exercises = struct
   let winning_moves ~(me : Game.Piece.t) (game : Game.t)
     : Game.Position.t list
     =
-    ignore me;
-    ignore game;
-    failwith "Implement me!"
+    let available_move_list = available_moves game in
+    List.filter available_move_list ~f:(fun position ->
+      let new_board = place_piece game ~piece:me ~position in
+      match evaluate new_board with
+      | Game.Evaluation.Game_over { winner } ->
+        (match winner with
+         | Some piece -> Game.Piece.equal piece me
+         | None -> false)
+      | _ -> false)
   ;;
 
   (* Exercise 4 *)
   let losing_moves ~(me : Game.Piece.t) (game : Game.t)
     : Game.Position.t list
     =
-    ignore me;
-    ignore game;
-    failwith "Implement me!"
+    let available_moves = available_moves game in
+    let opp_win_moves = winning_moves ~me:(Game.Piece.flip me) game in
+    if List.length opp_win_moves > 1
+    then available_moves
+    else
+      List.filter available_moves ~f:(fun move ->
+        not
+          (List.exists opp_win_moves ~f:(fun opp_move ->
+             Game.Position.equal move opp_move)))
   ;;
+
+  let available_moves_that_do_not_immediately_lose
+    ~(me : Game.Piece.t)
+    (game : Game.t)
+    =
+    let available_moves_list = available_moves game in
+    let losing_moves_list = losing_moves ~me game in
+    List.filter available_moves_list ~f:(fun move ->
+      not
+        (List.exists losing_moves_list ~f:(fun losing_move ->
+           Game.Position.equal losing_move move)))
+  ;;
+
+  (* let minimax ~game ~depth ~(me : Game.Piece.t) =
+
+     ;; *)
 
   let exercise_one =
     Command.async
@@ -327,8 +388,10 @@ module Exercises = struct
       (let%map_open.Command () = return ()
        and piece = piece_flag in
        fun () ->
-         let winning_moves = winning_moves ~me:piece non_win in
-         print_s [%sexp (winning_moves : Game.Position.t list)];
+         let winning_moves_1 = winning_moves ~me:piece non_win in
+         print_s [%sexp (winning_moves_1 : Game.Position.t list)];
+         let winning_moves_2 = winning_moves ~me:piece non_win_2 in
+         print_s [%sexp (winning_moves_2 : Game.Position.t list)];
          return ())
   ;;
 
@@ -338,8 +401,8 @@ module Exercises = struct
       (let%map_open.Command () = return ()
        and piece = piece_flag in
        fun () ->
-         let losing_moves = losing_moves ~me:piece non_win in
-         print_s [%sexp (losing_moves : Game.Position.t list)];
+         let losing_moves_1 = losing_moves ~me:piece test_losing_move in
+         print_s [%sexp (losing_moves_1 : Game.Position.t list)];
          return ())
   ;;
 
