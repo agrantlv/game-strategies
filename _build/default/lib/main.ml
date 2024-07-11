@@ -16,6 +16,7 @@ module Exercises = struct
   end
 
   let empty_game = Game.empty Game.Game_kind.Tic_tac_toe
+  (* let empty_gomoku_game = Game.empty Game.Game_kind.Omok *)
 
   let place_piece (game : Game.t) ~piece ~position : Game.t =
     let board = Map.set game.board ~key:position ~data:piece in
@@ -125,7 +126,7 @@ module Exercises = struct
      ---------
      |   | X
   *)
-  let non_win_2 =
+  let _non_win_2 =
     let open Game in
     empty_game
     |> place_piece ~piece:Piece.X ~position:{ Position.row = 0; column = 0 }
@@ -300,8 +301,13 @@ module Exercises = struct
     =
     let available_moves = available_moves game in
     let opp_win_moves = winning_moves ~me:(Game.Piece.flip me) game in
-    if List.length opp_win_moves > 1
+    (* print_endline "opponent winning moves:";
+       print_s [%message (opp_win_moves : Game.Position.t list)]; *)
+    let win_len = List.length opp_win_moves in
+    if win_len > 1
     then available_moves
+    else if win_len = 0
+    then []
     else
       List.filter available_moves ~f:(fun move ->
         not
@@ -314,19 +320,27 @@ module Exercises = struct
     (game : Game.t)
     =
     let available_moves_list = available_moves game in
+    (* print_endline "available moves:";
+       print_s [%sexp (available_moves_list : Game.Position.t list)]; *)
     let losing_moves_list = losing_moves ~me game in
+    (* print_endline "losing moves:";
+       print_s [%sexp (losing_moves_list : Game.Position.t list)]; *)
     List.filter available_moves_list ~f:(fun move ->
       not
         (List.exists losing_moves_list ~f:(fun losing_move ->
            Game.Position.equal losing_move move)))
   ;;
 
-  let score_game ~(me : Game.Piece.t) (game : Game.t) : int =
+  let score_game ~(cur_piece : Game.Piece.t) (game : Game.t) : int =
     match evaluate game with
     | Game_over { winner } ->
       (match winner with
        | Some piece ->
-         if Game.Piece.equal piece me then Int.max_value else Int.min_value
+         (* ignore cur_piece; *)
+         (* Int.max_value *)
+         if Game.Piece.equal piece cur_piece
+         then Int.max_value
+         else Int.min_value
        | None -> 0)
     | Game_continues -> 0
     | Illegal_move -> 0
@@ -335,7 +349,7 @@ module Exercises = struct
   let rec minimax
     ~(game : Game.t)
     ~depth
-    ~(me : Game.Piece.t)
+    ~(cur_piece : Game.Piece.t)
     (maximizing_player : bool)
     : int
     =
@@ -347,18 +361,18 @@ module Exercises = struct
       | _ -> false
     in
     if depth = 0 || game_over
-    then score_game ~me game
+    then score_game game ~cur_piece
     else (
       let possible_moves =
-        available_moves_that_do_not_immediately_lose ~me game
+        available_moves_that_do_not_immediately_lose ~me:cur_piece game
       in
       if maximizing_player
       then (
         let score_list =
           List.map possible_moves ~f:(fun move ->
             minimax
-              ~game:(place_piece game ~piece:me ~position:move)
-              ~me
+              ~game:(place_piece game ~piece:cur_piece ~position:move)
+              ~cur_piece:(Game.Piece.flip cur_piece)
               ~depth:(depth - 1)
               false)
         in
@@ -370,8 +384,8 @@ module Exercises = struct
         let score_list =
           List.map possible_moves ~f:(fun move ->
             minimax
-              ~game:(place_piece game ~piece:me ~position:move)
-              ~me
+              ~game:(place_piece game ~piece:cur_piece ~position:move)
+              ~cur_piece:(Game.Piece.flip cur_piece)
               ~depth:(depth - 1)
               true)
         in
@@ -443,10 +457,26 @@ module Exercises = struct
       (let%map_open.Command () = return ()
        and piece = piece_flag in
        fun () ->
-         let winning_moves_1 = winning_moves ~me:piece non_win in
-         print_s [%sexp (winning_moves_1 : Game.Position.t list)];
-         let winning_moves_2 = winning_moves ~me:piece non_win_2 in
-         print_s [%sexp (winning_moves_2 : Game.Position.t list)];
+         (* let winning_moves_1 = winning_moves ~me:piece non_win in
+            print_s [%sexp (winning_moves_1 : Game.Position.t list)];
+            let winning_moves_2 = winning_moves ~me:piece non_win_2 in
+            print_s [%sexp (winning_moves_2 : Game.Position.t list)]; *)
+         print_endline
+           "testing available moves that don't immediately lose: should be \
+            (1, 1)";
+         let dont_lose =
+           available_moves_that_do_not_immediately_lose ~me:piece non_win
+         in
+         print_endline "available moves that dont immediately lose:";
+         print_s [%sexp (dont_lose : Game.Position.t list)];
+         print_endline
+           "testing available moves that don't immediately lose: should be \
+            all";
+         let dont_lose_2 =
+           available_moves_that_do_not_immediately_lose ~me:piece empty_game
+         in
+         print_endline "available moves that dont immediately lose:";
+         print_s [%sexp (dont_lose_2 : Game.Position.t list)];
          return ())
   ;;
 
@@ -461,58 +491,83 @@ module Exercises = struct
          return ())
   ;;
 
+  let handle_turn (_client : unit) (query : Rpcs.Take_turn.Query.t)
+    : Rpcs.Take_turn.Response.t Deferred.t
+    =
+    (* let%bind () = delay 10 in *)
+    (* print_s [%message "Received query" (query : Echo.Query.t)]; *)
+    let piece = query.you_play in
+    let game = query.game in
+    let possible_moves =
+      available_moves_that_do_not_immediately_lose game ~me:piece
+    in
+    let depth = match game.game_kind with Tic_tac_toe -> 9 | Omok -> 2 in
+    print_s [%message (possible_moves : Game.Position.t list)];
+    let move_priority_list =
+      List.map possible_moves ~f:(fun move ->
+        let prio =
+          minimax
+            ~game:(place_piece game ~piece ~position:move)
+            ~cur_piece:(Game.Piece.flip piece)
+            ~depth
+            false
+        in
+        move, prio)
+    in
+    print_game game;
+    print_s [%message (move_priority_list : (Game.Position.t * int) list)];
+    let position =
+      List.max_elt move_priority_list ~compare:(fun tuple1 tuple2 ->
+        let min1 = match tuple1 with _, prio -> prio in
+        let min2 = match tuple2 with _, prio2 -> prio2 in
+        Int.compare min1 min2)
+    in
+    let position_answer =
+      match position with
+      | Some tuple -> (match tuple with move, _ -> move)
+      | None -> Game.Position.{ row = -1; column = -1 }
+    in
+    let (response : Rpcs.Take_turn.Response.t) =
+      { piece; position = position_answer }
+    in
+    return response
+  ;;
+
+  (*
+     let gomoku =
+    Command.async
+      ~summary:"Exercise 4: Is there a losing move?"
+      (let%map_open.Command () = return ()
+       and piece = piece_flag in
+       fun () ->
+         let open Game in
+         let board =
+           empty_gomoku_game
+           |> place_piece
+                ~piece:Piece.X
+                ~position:{ Position.row = 7; column = 7 }
+         in
+         let piece = Game.Piece.O in
+         let (query : Rpcs.Take_turn.Query.t) = {game = board; you_play = piece}
+         return ())
+  ;; *)
+
   let command =
     Command.group
       ~summary:"Exercises"
       [ "one", exercise_one
       ; "two", exercise_two
       ; "three", exercise_three
-      ; "four", exercise_four
+      ; "four", exercise_four (* ; "gomoku", gomoku *)
       ]
   ;;
 end
 
-let handle_turn (_client : unit) (query : Rpcs.Take_turn.Query.t) =
-  (* let%bind () = delay 10 in *)
-  (* print_s [%message "Received query" (query : Echo.Query.t)]; *)
-  let piece = query.you_play in
-  let game = query.game in
-  let possible_moves =
-    Exercises.available_moves_that_do_not_immediately_lose ~me:piece game
-  in
-  print_s [%message (possible_moves : Game.Position.t list)];
-  let move_priority_list =
-    List.map possible_moves ~f:(fun move ->
-      let prio =
-        Exercises.minimax
-          ~game:(Exercises.place_piece game ~piece ~position:move)
-          ~me:piece
-          ~depth:9
-          true
-      in
-      move, prio)
-  in
-  let position =
-    List.max_elt move_priority_list ~compare:(fun tuple1 tuple2 ->
-      let min1 = match tuple1 with _, prio -> prio in
-      let min2 = match tuple2 with _, prio2 -> prio2 in
-      min1 - min2)
-  in
-  let position_answer =
-    match position with
-    | Some tuple -> (match tuple with move, _ -> move)
-    | None -> Game.Position.{ row = 0; column = 0 }
-  in
-  let (response : Rpcs.Take_turn.Response.t) =
-    { piece; position = position_answer }
-  in
-  return response
-;;
-
 let implementations =
   Rpc.Implementations.create_exn
     ~on_unknown_rpc:`Close_connection
-    ~implementations:[ Rpc.Rpc.implement Rpcs.Take_turn.rpc handle_turn ]
+    ~implementations:
+      [ Rpc.Rpc.implement Rpcs.Take_turn.rpc Exercises.handle_turn ]
 ;;
 
 let command_play =
