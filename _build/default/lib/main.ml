@@ -302,10 +302,10 @@ module Exercises = struct
               Map.mem pos_map check_pos
               && Game.Piece.equal one_piece (Map.find_exn pos_map check_pos))))
       with
-      | Some pos ->
-        if Game.Piece.equal me (Map.find_exn pos_map pos)
-        then len
-        else -1 * len
+      | Some { row; column } ->
+        if Game.Piece.equal me (Map.find_exn pos_map { row; column })
+        then len * 100
+        else -1 * len * 100
       | None -> in_a_row game ~me ~len:(len - 1))
   ;;
 
@@ -425,7 +425,9 @@ module Exercises = struct
               ~game:(place_piece game ~piece:cur_piece ~position:move)
               ~cur_piece:(Game.Piece.flip cur_piece)
               ~depth:(depth - 1)
-              false)
+              false
+            - abs (7 - move.row)
+            - abs (7 - move.column))
         in
         match List.max_elt score_list ~compare:Int.compare with
         | Some max_elem -> max_elem
@@ -438,7 +440,9 @@ module Exercises = struct
               ~game:(place_piece game ~piece:cur_piece ~position:move)
               ~cur_piece:(Game.Piece.flip cur_piece)
               ~depth:(depth - 1)
-              true)
+              true
+            + abs (7 - move.row)
+            + abs (7 - move.column))
         in
         match List.min_elt score_list ~compare:Int.compare with
         | Some max_elem -> max_elem

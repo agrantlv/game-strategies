@@ -302,10 +302,10 @@ module Exercises = struct
               Map.mem pos_map check_pos
               && Game.Piece.equal one_piece (Map.find_exn pos_map check_pos))))
       with
-      | Some pos ->
-        if Game.Piece.equal me (Map.find_exn pos_map pos)
-        then len
-        else -1 * len
+      | Some { row; column } ->
+        if Game.Piece.equal me (Map.find_exn pos_map { row; column })
+        then (len * 100) - abs (7 - row) - abs (7 - column)
+        else (-1 * len * 100) + abs (7 - row) + abs (7 - column)
       | None -> in_a_row game ~me ~len:(len - 1))
   ;;
 
