@@ -173,7 +173,7 @@ module Exercises = struct
       List.iteri col_list ~f:(fun col piece ->
         print_string piece;
         if not (col = len - 1) then print_string " | " else print_newline ());
-      let line_str = String.init (3 * len) ~f:(fun _num -> '-') in
+      let line_str = String.init (4 * len) ~f:(fun _num -> '-') in
       if not (row = len - 1) then print_endline line_str)
   ;;
 
@@ -280,6 +280,35 @@ module Exercises = struct
          else Game.Evaluation.Game_continues)
   ;;
 
+  let rec in_a_row (game : Game.t) ~(me : Game.Piece.t) ~(len : int) : int =
+    let pos_map = game.board in
+    let previous_moves = Map.keys pos_map in
+    if len = 1
+    then 0
+    else (
+      match
+        List.find previous_moves ~f:(fun position ->
+          (* partial application of function*)
+          let create_winning_list = create_winning_list ~position ~len in
+          let check_lists =
+            List.map Direction.all ~f:(fun direction ->
+              create_winning_list ~direction)
+          in
+          List.exists check_lists ~f:(fun potential_list ->
+            let (one_piece : Game.Piece.t) =
+              Map.find_exn pos_map (List.hd_exn potential_list)
+            in
+            List.for_all potential_list ~f:(fun check_pos ->
+              Map.mem pos_map check_pos
+              && Game.Piece.equal one_piece (Map.find_exn pos_map check_pos))))
+      with
+      | Some pos ->
+        if Game.Piece.equal me (Map.find_exn pos_map pos)
+        then len
+        else -1 * len
+      | None -> in_a_row game ~me ~len:(len - 1))
+  ;;
+
   (* Exercise 3 *)
   let winning_moves ~(me : Game.Piece.t) (game : Game.t)
     : Game.Position.t list
@@ -342,7 +371,29 @@ module Exercises = struct
          then Int.max_value
          else Int.min_value
        | None -> 0)
-    | Game_continues -> 0
+    | Game_continues ->
+      (match game.game_kind with
+       | Tic_tac_toe -> 0
+       | Omok ->
+         (* let pos_map = game.board in
+            Map.counti pos_map ~f:(fun ~key:position ~data:check_piece ->
+            let surrounding_functions = Game.Position.all_offsets in
+            let surrounding_pieces = List.map surrounding_functions ~f:(fun offset ->
+            offset position
+            ) in
+
+            if (Game.Piece.equal cur_piece check_piece) && (Map.existsi pos_map ~f:(fun ~key:position2 ~data:
+
+            )
+            ) then
+            true
+            else
+            false
+            ) *)
+         in_a_row
+           game
+           ~me:cur_piece
+           ~len:(Game.Game_kind.win_length game.game_kind))
     | Illegal_move -> 0
   ;;
 
@@ -491,6 +542,46 @@ module Exercises = struct
          return ())
   ;;
 
+  let shrink_moves ~(game : Game.t) ~possible_moves =
+    match game.game_kind with
+    | Tic_tac_toe -> possible_moves
+    | Omok ->
+      let move_list = Map.keys game.board in
+      let row_list =
+        List.map move_list ~f:(fun Game.Position.{ row; column = _ } -> row)
+      in
+      let col_list =
+        List.map move_list ~f:(fun Game.Position.{ row = _; column } ->
+          column)
+      in
+      let min_row =
+        match List.min_elt row_list ~compare:Int.compare with
+        | Some row -> row
+        | None -> 7
+      in
+      let max_row =
+        match List.max_elt row_list ~compare:Int.compare with
+        | Some row -> row
+        | None -> 7
+      in
+      let min_col =
+        match List.min_elt col_list ~compare:Int.compare with
+        | Some row -> row
+        | None -> 7
+      in
+      let max_col =
+        match List.max_elt col_list ~compare:Int.compare with
+        | Some row -> row
+        | None -> 7
+      in
+      let radius = 3 in
+      List.filter possible_moves ~f:(fun Game.Position.{ row; column } ->
+        row >= min_row - radius
+        && row <= max_row + radius
+        && column >= min_col - radius
+        && column <= max_col + radius)
+  ;;
+
   let handle_turn (_client : unit) (query : Rpcs.Take_turn.Query.t)
     : Rpcs.Take_turn.Response.t Deferred.t
     =
@@ -498,13 +589,27 @@ module Exercises = struct
     (* print_s [%message "Received query" (query : Echo.Query.t)]; *)
     let piece = query.you_play in
     let game = query.game in
-    let possible_moves =
+    let game_kind = game.game_kind in
+    let depth = match game_kind with Tic_tac_toe -> 9 | Omok -> 1 in
+    (* changes possible moves to be a win, move that doesn't lose, or any available move*)
+    let available_moves_that_dont_lose =
       available_moves_that_do_not_immediately_lose game ~me:piece
     in
-    let depth = match game.game_kind with Tic_tac_toe -> 9 | Omok -> 2 in
-    print_s [%message (possible_moves : Game.Position.t list)];
+    let win_moves = winning_moves game ~me:piece in
+    let possible_moves =
+      if not (List.is_empty win_moves)
+      then win_moves
+      else if not (List.is_empty available_moves_that_dont_lose)
+      then available_moves_that_dont_lose
+      else available_moves game
+    in
+    (* print_s [%message (possible_moves : Game.Position.t list)]; *)
+    (* shrinks moves even further for Omok *)
+    let new_moves = shrink_moves ~game ~possible_moves in
+    (* print_s [%message (possible_moves : Game.Position.t list)]; *)
+    (* print_s [%message (new_moves : Game.zPosition.t list)]; *)
     let move_priority_list =
-      List.map possible_moves ~f:(fun move ->
+      List.map new_moves ~f:(fun move ->
         let prio =
           minimax
             ~game:(place_piece game ~piece ~position:move)
@@ -528,7 +633,9 @@ module Exercises = struct
       | None -> Game.Position.{ row = -1; column = -1 }
     in
     let (response : Rpcs.Take_turn.Response.t) =
-      { piece; position = position_answer }
+      if Game.Game_kind.equal game_kind Omok && Map.is_empty game.board
+      then { piece; position = { row = 7; column = 7 } }
+      else { piece; position = position_answer }
     in
     return response
   ;;
